@@ -1,0 +1,44 @@
+function disable_unused_image_sizes($sizes) {
+    unset($sizes['medium_large']); // Remove Medium Large
+    unset($sizes['1536x1536']); // Remove 1536x1536
+    unset($sizes['2048x2048']); // Remove 2048x2048
+    return $sizes;
+}
+add_filter('intermediate_image_sizes_advanced', 'disable_unused_image_sizes');
+// Schedule the cron job if not already scheduled
+function schedule_unused_images_cleanup() {
+    if (!wp_next_scheduled('cleanup_unused_images_cron')) {
+        wp_schedule_event(time(), 'daily', 'cleanup_unused_images_cron');
+    }
+}
+add_action('wp', 'schedule_unused_images_cleanup');
+
+// Function to delete unused image sizes from media uploads
+function cleanup_unused_images() {
+    global $wpdb;
+    $upload_dir = wp_get_upload_dir();
+    $base_dir = $upload_dir['basedir'];
+
+    // List of sizes to remove
+    $unused_sizes = ['medium_large', '1536x1536', '2048x2048'];
+
+    // Get all media attachments
+    $attachments = $wpdb->get_results("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment'");
+
+    foreach ($attachments as $attachment) {
+        $meta = wp_get_attachment_metadata($attachment->ID);
+
+        if ($meta && isset($meta['sizes'])) {
+            foreach ($unused_sizes as $size) {
+                if (isset($meta['sizes'][$size])) {
+                    $file_path = $base_dir . '/' . dirname($meta['file']) . '/' . $meta['sizes'][$size]['file'];
+                    
+                    if (file_exists($file_path)) {
+                        @unlink($file_path); // Delete file
+                    }
+                }
+            }
+        }
+    }
+}
+add_action('cleanup_unused_images_cron', 'cleanup_unused_images');
